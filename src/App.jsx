@@ -7,7 +7,6 @@ import {
   Calendar, 
   Trash2, 
   Search,
-  Snowflake,
   X,
   Plus,
   ShoppingBag,
@@ -15,8 +14,6 @@ import {
   Download,
   Briefcase,
   Home,
-  ChevronLeft,
-  ChevronRight,
   MapPin,
   CheckCircle,
   Pencil,
@@ -28,7 +25,8 @@ import {
   Bell,
   AlertCircle,
   Wallet,
-  LogOut
+  ChevronLeft, 
+  ChevronRight 
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -79,7 +77,6 @@ const GlobalStyles = () => (
       .print-only { display: block !important; }
       body { background: white; }
     }
-    /* Estilos do Papel A4 e Container de Escala */
     .a4-paper {
         width: 210mm;
         min-height: 297mm;
@@ -88,7 +85,6 @@ const GlobalStyles = () => (
         box-shadow: 0 0 15px rgba(0,0,0,0.15);
         transform-origin: top center;
     }
-    /* Wrapper para aplicar zoom no mobile sem quebrar o layout */
     .a4-scale-wrapper {
         width: 100%;
         display: flex;
@@ -97,8 +93,8 @@ const GlobalStyles = () => (
     }
     @media (max-width: 800px) {
         .a4-paper {
-            transform: scale(0.45); /* Reduz para 45% em celulares */
-            margin-bottom: -140mm; /* Compensa o espaço branco gerado pelo scale */
+            transform: scale(0.45);
+            margin-bottom: -140mm;
         }
     }
     @media (min-width: 801px) and (max-width: 1024px) {
@@ -137,6 +133,21 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'instala-control-app-
 // COMPONENTES AUXILIARES
 // ============================================================================
 
+// --- LOGO CLIMAHUB (SVG Ajustado: Abertura Maior e Bolinha no Centro do Gap) ---
+const LogoIcon = ({ className }) => (
+  <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    {/* Arco (C):
+      Inicia em (85, 47) -> Lado direito, um pouco abaixo do meio
+      Vai até (53, 15) -> Topo, um pouco à esquerda
+      Isso cria um grande gap no canto superior direito.
+    */}
+    <path d="M 85 47 A 35 35 0 1 1 53 15" stroke="currentColor" strokeWidth="12" strokeLinecap="round" />
+    
+    {/* Ponto: Centralizado no Gap (75, 25) */}
+    <circle cx="75" cy="25" r="7" fill="currentColor" />
+  </svg>
+);
+
 const ToastContainer = ({ toasts, removeToast }) => {
   return (
     <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none no-print">
@@ -155,7 +166,7 @@ const ToastContainer = ({ toasts, removeToast }) => {
           {toast.type === 'info' && <Bell size={20} className="text-blue-500" />}
           <div>
             <h4 className="font-bold text-sm">{toast.title}</h4>
-            <p className="text-xs opacity-90">{toast.message}</p>
+            <p className="text-xs opacity-90">{String(toast.message)}</p>
           </div>
           <button onClick={() => removeToast(toast.id)} className="ml-auto text-slate-400 hover:text-slate-600">
             <X size={16} />
@@ -202,7 +213,6 @@ const SidebarItem = ({ icon, label, active, onClick }) => (
   </button>
 );
 
-// --- Navegação Mobile Otimizada com Botão Central ---
 const MobileBottomNav = ({ currentView, onChangeView, onAddBudget }) => {
   const NavItem = ({ view, icon: Icon, label }) => {
     const isActive = currentView === view;
@@ -222,8 +232,6 @@ const MobileBottomNav = ({ currentView, onChangeView, onAddBudget }) => {
       <div className="flex justify-around items-center h-16 px-2">
         <NavItem view="dashboard" icon={Home} label="Início" />
         <NavItem view="services" icon={Wrench} label="Serviços" />
-        
-        {/* Botão Central de Ação */}
         <div className="relative -top-5">
           <button 
             onClick={onAddBudget}
@@ -232,7 +240,6 @@ const MobileBottomNav = ({ currentView, onChangeView, onAddBudget }) => {
             <Plus size={28} />
           </button>
         </div>
-
         <NavItem view="schedule" icon={Calendar} label="Agenda" />
         <NavItem view="budget" icon={FileText} label="Orçamentos" />
       </div>
@@ -241,8 +248,9 @@ const MobileBottomNav = ({ currentView, onChangeView, onAddBudget }) => {
 };
 
 // ============================================================================
-// MODAL DE VISUALIZAÇÃO DO ORÇAMENTO (PDF PREVIEW) - OTIMIZADO
+// MODALS E VIEWS
 // ============================================================================
+
 const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addToast }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     
@@ -262,7 +270,6 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
           const element = document.getElementById('budget-preview-content');
           if (!element) throw new Error('Elemento de orçamento não encontrado.');
           
-          // Reseta transformações temporariamente para gerar o PDF limpo
           const originalTransform = element.style.transform;
           const originalMargin = element.style.marginBottom;
           element.style.transform = 'none';
@@ -278,7 +285,6 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
           
           await window.html2pdf().set(opt).from(element).save();
           
-          // Restaura estilos visuais
           element.style.transform = originalTransform;
           element.style.marginBottom = originalMargin;
 
@@ -295,8 +301,8 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/90 p-0 md:p-4 overflow-hidden">
             <div className="bg-slate-100 w-full h-full md:rounded-2xl flex flex-col md:max-w-5xl md:h-[90vh] shadow-2xl relative">
                 <div className="bg-white px-4 py-3 border-b border-slate-200 flex justify-between items-center z-10 shrink-0">
-                    <div className="flex items-center gap-3">
-                        <FileText className="text-blue-600" size={24} />
+                    <div className="flex items-center gap-2">
+                        <LogoIcon className="w-6 h-6 text-blue-500" />
                         <div>
                             <h3 className="font-bold text-slate-800">Visualizar Orçamento</h3>
                             <p className="text-xs text-slate-500">Confira os dados antes de baixar.</p>
@@ -311,12 +317,11 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
                 </div>
 
                 <div className="flex-1 overflow-auto bg-slate-200/50 p-4 md:p-8">
-                    {/* Wrapper de escala para garantir que caiba na tela */}
                     <div className="a4-scale-wrapper">
                         <div id="budget-preview-content" className="a4-paper relative text-slate-800 font-sans p-10 shrink-0">
-                            <div className="absolute top-0 left-0 w-full h-3 bg-slate-800"></div>
+                            <div className="absolute top-0 left-0 w-full h-3 bg-slate-900"></div>
                             
-                            <div className="border-b-2 border-slate-800 pb-6 mb-8 flex justify-between items-start mt-4">
+                            <div className="border-b-2 border-slate-900 pb-6 mb-8 flex justify-between items-start mt-4">
                                 <div>
                                     <h1 className="text-3xl font-bold mb-1 text-slate-900">ORÇAMENTO</h1>
                                     <p className="text-sm text-slate-500 font-medium">
@@ -324,8 +329,13 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
                                     </p>
                                 </div>
                                 <div className="text-right">
-                                    <h2 className="text-xl font-bold text-slate-900">{companySettings?.companyName || 'InstalaControl'}</h2>
-                                    <p className="text-sm text-slate-600">{companySettings?.companySubtitle || 'Soluções em Climatização'}</p>
+                                    <div className="flex items-center justify-end gap-2 mb-2">
+                                        <LogoIcon className="w-6 h-6 text-blue-500" />
+                                        <h2 className="text-xl font-bold text-slate-900">
+                                            Clima<span className="text-blue-500">Hub</span>
+                                        </h2>
+                                    </div>
+                                    <p className="text-sm text-slate-600 font-medium">{companySettings?.companyName || 'Seu Nome/Empresa'}</p>
                                     <p className="text-xs text-slate-400 mt-1">{companySettings?.phone || ''}</p>
                                 </div>
                             </div>
@@ -342,7 +352,7 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
 
                             <table className="w-full text-left border-collapse mb-8">
                                 <thead>
-                                    <tr className="border-b-2 border-slate-800">
+                                    <tr className="border-b-2 border-slate-900">
                                     <th className="py-3 font-bold w-1/2 text-sm uppercase tracking-wider">Descrição do Serviço</th>
                                     <th className="py-3 font-bold text-center text-sm uppercase tracking-wider">Qtd</th>
                                     <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Unitário</th>
@@ -390,17 +400,11 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
     );
 };
 
-// ============================================================================
-// VIEWS (OTIMIZADAS)
-// ============================================================================
-
-// --- Histórico de Orçamentos (Substitui BudgetGeneratorView para remover form da tela principal) ---
 const BudgetHistoryView = ({ userId, onScheduleFromBudget, addToast, companySettings }) => {
   const [savedBudgets, setSavedBudgets] = useState([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedBudget, setSelectedBudget] = useState(null);
 
-  // Carrega html2pdf
   useEffect(() => {
     const scriptId = 'html2pdf-script';
     if (!document.getElementById(scriptId)) {
@@ -609,7 +613,6 @@ const SettingsView = ({ userId, addToast, settings, onSaveSettings }) => {
   );
 };
 
-// --- Modal de Novo Orçamento (Agora é a forma principal de criar) ---
 const AddBudgetModal = ({ isOpen, onClose, onSave, isSaving, nextBudgetNumber, addToast }) => {
   const [formData, setFormData] = useState({
     budgetNumber: '',
@@ -1153,7 +1156,6 @@ const AddServiceModal = ({ isOpen, onClose, onSave, isSaving, initialData }) => 
   );
 };
 
-// --- View de Agenda (RESTAURADA) ---
 const ScheduleView = ({ appointments, onAddAppointment, onDeleteAppointment, onCompleteAppointment }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -1283,7 +1285,6 @@ const ScheduleView = ({ appointments, onAddAppointment, onDeleteAppointment, onC
   );
 };
 
-// --- View do Dashboard (Otimizado) ---
 const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppointment }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -1360,7 +1361,6 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
             </select>
           </div>
 
-          {/* Botão Desktop */}
           <div className="hidden md:block">
             <Button onClick={onOpenBudget} className="bg-slate-900 text-white shadow-lg shadow-slate-300">
               <Plus size={18} /> Novo Orçamento
@@ -1518,6 +1518,16 @@ export default function App() {
   const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
 
   useEffect(() => {
+    // --- INJEÇÃO DINÂMICA DO FAVICON E TÍTULO ---
+    document.title = "ClimaHub"; // Atualiza o título da aba
+    
+    // Ícone SVG Corrigido para Favicon também
+    const svgIcon = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M 85 47 A 35 35 0 1 1 53 15" stroke="#3b82f6" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="75" cy="25" r="7" fill="#3b82f6"/></svg>`);
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.href = `data:image/svg+xml,${svgIcon}`;
+    document.head.appendChild(link);
+
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -1630,8 +1640,13 @@ export default function App() {
       {/* Sidebar Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 border-r border-slate-800 h-screen fixed z-50">
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          <div className="bg-white/10 p-2 rounded-xl text-white"><Snowflake size={20} /></div>
-          <div><h1 className="font-bold text-white text-base tracking-wide">InstalaControl</h1><p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Professional</p></div>
+          <LogoIcon className="w-8 h-8 text-white" />
+          <div>
+            <h1 className="font-bold text-white text-base tracking-wide">
+              Clima<span className="text-blue-500">Hub</span>
+            </h1>
+            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Professional</p>
+          </div>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           <SidebarItem icon={<LayoutDashboard size={18} />} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} />
@@ -1644,7 +1659,10 @@ export default function App() {
 
       {/* Header Mobile Otimizado com Settings */}
       <div className="md:hidden fixed top-0 w-full bg-slate-900 z-30 px-4 py-3 flex items-center justify-between shadow-lg">
-         <span className="font-bold text-white text-sm flex items-center gap-2"><Snowflake size={16} /> InstalaControl</span>
+         <div className="flex items-center gap-2">
+            <LogoIcon className="w-6 h-6 text-white" />
+            <span className="font-bold text-white text-sm">Clima<span className="text-blue-500">Hub</span></span>
+         </div>
          
          <div className="flex gap-2">
             <button onClick={() => setCurrentView('settings')} className="text-slate-400 hover:text-white p-2">
