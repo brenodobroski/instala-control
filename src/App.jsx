@@ -28,7 +28,9 @@ import {
   Settings,
   Bell,
   AlertCircle,
-  Wallet
+  Wallet,
+  Printer,
+  Share2
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -81,7 +83,6 @@ const GlobalStyles = () => (
     .pb-safe {
       padding-bottom: env(safe-area-inset-bottom);
     }
-    /* Esconde barra de rolagem mas permite scroll */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -94,17 +95,33 @@ const GlobalStyles = () => (
       .print-only { display: block !important; }
       body { background: white; }
     }
+    /* Classe para folha A4 na tela */
+    .a4-paper {
+        width: 210mm;
+        min-height: 297mm;
+        background: white;
+        margin: 0 auto;
+        box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    /* Ajuste para mobile */
+    @media (max-width: 768px) {
+        .a4-wrapper {
+            transform: scale(0.6);
+            transform-origin: top center;
+            height: 100%;
+            overflow-y: auto;
+        }
+    }
   `}</style>
 );
 
 // --- Configuração do Firebase ---
-// Tenta pegar a config global (ambiente AI) ou usa fallback
 let firebaseConfig;
 try {
   firebaseConfig = typeof __firebase_config !== 'undefined' 
     ? JSON.parse(__firebase_config) 
     : {
-        apiKey: "AIzaSyBUaOmeMusJ6dljI83y00oYAq6R-NZiuEM", // Chave de exemplo/fallback
+        apiKey: "AIzaSyBUaOmeMusJ6dljI83y00oYAq6R-NZiuEM", 
         authDomain: "instala-control.firebaseapp.com",
         projectId: "instala-control",
         storageBucket: "instala-control.firebasestorage.app",
@@ -113,10 +130,9 @@ try {
       };
 } catch (error) {
   console.error("Erro ao fazer parse da config do Firebase", error);
-  firebaseConfig = {}; // Config vazia para não quebrar o app imediatamente
+  firebaseConfig = {}; 
 }
 
-// Inicialização segura do Firebase (Singleton)
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -241,6 +257,146 @@ const MobileBottomNav = ({ currentView, onChangeView, onOpenBudget }) => {
 };
 
 // ============================================================================
+// NOVO: MODAL DE VISUALIZAÇÃO DO ORÇAMENTO (PDF PREVIEW)
+// ============================================================================
+const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addToast }) => {
+    const [isGenerating, setIsGenerating] = useState(false);
+    
+    if (!isOpen || !budgetData) return null;
+
+    const { budgetNumber, clientData, items, total, paymentTerms, validity, paymentMethod, serviceType, createdAt } = budgetData;
+
+    const handleDownloadPDF = async () => {
+        if (typeof window.html2pdf === 'undefined') {
+          addToast('Sistema', 'Carregando módulo de PDF... Tente novamente em alguns segundos.', 'info');
+          return;
+        }
+        setIsGenerating(true);
+        addToast('PDF', 'Preparando download...', 'info');
+        
+        try {
+          const element = document.getElementById('budget-preview-content');
+          if (!element) throw new Error('Elemento de orçamento não encontrado.');
+    
+          const opt = {
+            margin: 0,
+            filename: `Orcamento_${budgetNumber}_${(clientData.name || 'Cliente').replace(/\s+/g, '_')}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+          
+          // Importante: html2pdf funciona melhor com elementos visíveis
+          await window.html2pdf().set(opt).from(element).save();
+          addToast('Sucesso', 'Download concluído!', 'success');
+        } catch (error) { 
+          console.error(error); 
+          addToast('Erro', 'Falha ao gerar PDF.', 'error');
+        } finally { 
+          setIsGenerating(false); 
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm animate-fade-in p-0 md:p-4 overflow-hidden">
+            <div className="bg-slate-100 w-full h-full md:rounded-2xl flex flex-col md:max-w-5xl md:h-[90vh] shadow-2xl relative">
+                {/* Header do Modal */}
+                <div className="bg-white px-4 py-3 border-b border-slate-200 flex justify-between items-center z-10 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <FileText className="text-blue-600" size={24} />
+                        <div>
+                            <h3 className="font-bold text-slate-800">Visualizar Orçamento</h3>
+                            <p className="text-xs text-slate-500">Confira os dados antes de baixar.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="secondary" onClick={onClose} disabled={isGenerating}>Fechar</Button>
+                        <Button onClick={handleDownloadPDF} disabled={isGenerating} className="bg-blue-600 hover:bg-blue-700">
+                            {isGenerating ? 'Gerando...' : <><Download size={18} /> Baixar PDF</>}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Área de Scroll com o papel A4 */}
+                <div className="flex-1 overflow-auto bg-slate-200/50 p-4 md:p-8 flex justify-center items-start">
+                    {/* Elemento que será transformado em PDF */}
+                    <div id="budget-preview-content" className="a4-paper relative text-slate-800 font-sans p-10 shrink-0">
+                        <div className="absolute top-0 left-0 w-full h-3 bg-slate-800"></div>
+                        
+                        <div className="border-b-2 border-slate-800 pb-6 mb-8 flex justify-between items-start mt-4">
+                            <div>
+                                <h1 className="text-3xl font-bold mb-1 text-slate-900">ORÇAMENTO</h1>
+                                <p className="text-sm text-slate-500 font-medium">
+                                    Nº {budgetNumber} | {new Date(createdAt || Date.now()).toLocaleDateString('pt-BR')}
+                                </p>
+                            </div>
+                            <div className="text-right">
+                                <h2 className="text-xl font-bold text-slate-900">{companySettings?.companyName || 'InstalaControl'}</h2>
+                                <p className="text-sm text-slate-600">{companySettings?.companySubtitle || 'Soluções em Climatização'}</p>
+                                <p className="text-xs text-slate-400 mt-1">{companySettings?.phone || ''}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-6 rounded-lg mb-8 border border-slate-100">
+                            <h3 className="text-xs font-bold uppercase tracking-wider mb-4 text-slate-400 flex items-center gap-2"><User size={12}/> Dados do Cliente</h3>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <p><span className="font-bold text-slate-700">Nome:</span> {clientData.name}</p>
+                                <p><span className="font-bold text-slate-700">Telefone:</span> {clientData.phone}</p>
+                                <p className="col-span-2"><span className="font-bold text-slate-700">Endereço:</span> {clientData.address}</p>
+                                <p className="col-span-2"><span className="font-bold text-slate-700">Tipo de Serviço:</span> {serviceType}</p>
+                            </div>
+                        </div>
+
+                        <table className="w-full text-left border-collapse mb-8">
+                            <thead>
+                                <tr className="border-b-2 border-slate-800">
+                                <th className="py-3 font-bold w-1/2 text-sm uppercase tracking-wider">Descrição do Serviço</th>
+                                <th className="py-3 font-bold text-center text-sm uppercase tracking-wider">Qtd</th>
+                                <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Unitário</th>
+                                <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map((item, i) => (
+                                <tr key={i} className="border-b border-slate-100 text-sm">
+                                    <td className="py-4 text-slate-700 font-medium">{item.description}</td>
+                                    <td className="py-4 text-center text-slate-600">{item.qty}</td>
+                                    <td className="py-4 text-right text-slate-600">R$ {item.price.toFixed(2)}</td>
+                                    <td className="py-4 text-right font-bold text-slate-900">R$ {(item.qty * item.price).toFixed(2)}</td>
+                                </tr>
+                                ))}
+                            </tbody>
+                        </table>
+
+                        <div className="flex justify-end mb-12">
+                            <div className="text-right bg-slate-50 p-6 rounded-lg border border-slate-100 min-w-[250px]">
+                                <p className="text-sm text-slate-500 mb-1 uppercase tracking-wider font-bold">Total Geral</p>
+                                <p className="text-3xl font-bold text-slate-900">R$ {Number(total).toFixed(2)}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-8 border-t border-slate-200 pt-8">
+                            <div>
+                                <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800"><DollarSign size={14} className="inline mr-1"/> Pagamento</h4>
+                                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{paymentMethod} - {paymentTerms}</p>
+                            </div>
+                            <div>
+                                <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800">Validade</h4>
+                                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{validity}</p>
+                            </div>
+                        </div>
+                        
+                        <div className="absolute bottom-10 left-10 right-10 text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
+                            <p>{companySettings?.footerText || 'Obrigado pela preferência! Entre em contato para dúvidas.'}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ============================================================================
 // VIEWS E MODAIS
 // ============================================================================
 
@@ -249,6 +405,9 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
   const [savedBudgets, setSavedBudgets] = useState([]);
   const [viewingBudget, setViewingBudget] = useState(null); 
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Controle do Modal de Preview
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -325,6 +484,7 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
     
     setIsGenerating(true);
     try {
+      let savedId;
       if (viewingBudget && isEditing) {
          await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'budgets', viewingBudget.id), {
           clientData,
@@ -342,8 +502,9 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
               ...viewingBudget,
               clientData, items, paymentTerms, validity, total: totalBudget, paymentMethod, serviceType
         });
+        savedId = viewingBudget.id;
       } else {
-        await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'budgets'), {
+        const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'budgets'), {
           budgetNumber: budgetNumber || nextBudgetNumberString, 
           clientData,
           items,
@@ -367,62 +528,30 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
     }
   };
 
-  const handleDownloadPDF = async () => {
-    if (typeof window.html2pdf === 'undefined') {
-      addToast('Sistema', 'Carregando módulo de PDF... Tente novamente em alguns segundos.', 'info');
-      return;
-    }
-    setIsGenerating(true);
-    addToast('PDF', 'Gerando arquivo...', 'info');
-    
-    try {
-      const element = document.getElementById('printable-area');
-      if (!element) {
-        throw new Error('Elemento de orçamento não encontrado.');
-      }
-
-      const clone = element.cloneNode(true);
+  // Prepara os dados para o modal de visualização
+  const getPreviewData = () => {
+      // Se estiver visualizando um salvo, usa ele. Se não, usa o estado do form.
+      if (viewingBudget && !isEditing) return viewingBudget;
       
-      clone.classList.remove('hidden-for-print');
-      clone.style.position = 'fixed';
-      clone.style.top = '0';
-      clone.style.left = '0';
-      clone.style.width = '210mm';
-      clone.style.minHeight = '297mm';
-      clone.style.zIndex = '99999';
-      clone.style.backgroundColor = 'white';
-      clone.style.display = 'block'; 
-
-      document.body.appendChild(clone);
-      
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const fileName = `Orcamento_${budgetNumber || nextBudgetNumberString}_${(clientData.name || 'Cliente').replace(/\s+/g, '_')}.pdf`;
-      
-      const options = {
-        margin: 0, 
-        filename: fileName, 
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
-          useCORS: true, 
-          scrollY: 0,
-          windowWidth: 1024 
-        }, 
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      return {
+          budgetNumber: budgetNumber || nextBudgetNumberString,
+          clientData,
+          items,
+          total: totalBudget,
+          paymentTerms,
+          validity,
+          paymentMethod,
+          serviceType,
+          createdAt: new Date().toISOString()
       };
-      
-      await window.html2pdf().set(options).from(clone).save(); 
-      addToast('Sucesso', 'Download iniciado!', 'success');
+  };
 
-      document.body.removeChild(clone);
-
-    } catch (error) { 
-      console.error(error); 
-      addToast('Erro', 'Falha ao gerar PDF.', 'error');
-    } finally { 
-      setIsGenerating(false); 
-    }
+  const handleOpenPreview = () => {
+      if (!clientData.name || items.length === 0) {
+          addToast('Atenção', 'Preencha os dados básicos para visualizar.', 'info');
+          return;
+      }
+      setIsPreviewOpen(true);
   };
 
   const handleDeleteBudget = async (id) => {
@@ -449,15 +578,15 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
 
   return (
     <div className="animate-fade-in flex flex-col xl:flex-row gap-6 pb-20 md:pb-0 h-full">
-      <style>{`
-        #printable-area.hidden-for-print {
-           position: fixed;
-           left: -9999px;
-           top: 0;
-           width: 210mm;
-           min-height: 297mm;
-        }
-      `}</style>
+      
+      {/* MODAL DE PREVIEW */}
+      <BudgetPreviewModal 
+        isOpen={isPreviewOpen} 
+        onClose={() => setIsPreviewOpen(false)} 
+        budgetData={getPreviewData()}
+        companySettings={companySettings}
+        addToast={addToast}
+      />
 
       <div className="flex-1 space-y-4 flex flex-col no-print">
         <header>
@@ -647,8 +776,8 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
                   </>
                )}
               
-              <Button onClick={handleDownloadPDF} variant="success" className="flex-1 bg-emerald-700 hover:bg-emerald-800" disabled={isGenerating}>
-                {isGenerating ? '...' : <><Download size={20} /> Baixar PDF</>}
+              <Button onClick={handleOpenPreview} variant="success" className="flex-1 bg-emerald-700 hover:bg-emerald-800" disabled={isGenerating}>
+                {isGenerating ? '...' : <><Search size={20} /> Gerar & Visualizar</>}
               </Button>
             </div>
           </>
@@ -695,7 +824,7 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
                       onClick={() => handleLoadBudget(budget)}
                       className="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors"
                     >
-                      <Search size={14} /> Visualizar / PDF
+                      <Search size={14} /> Detalhes / PDF
                     </button>
 
                     {budget.status === 'scheduled' ? (
@@ -727,79 +856,6 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
             )}
           </div>
         )}
-      </div>
-
-      {/* Área de Impressão - Oculta via CSS mas acessível para clonagem */}
-      <div id="printable-area" className="hidden-for-print">
-         {/* Conteúdo do PDF */}
-         <div className="bg-white p-10 w-[210mm] min-h-[297mm] text-slate-800 font-sans relative">
-            <div className="absolute top-0 left-0 w-full h-3 bg-slate-800"></div>
-            
-            <div className="border-b-2 border-slate-800 pb-6 mb-8 flex justify-between items-start mt-4">
-              <div>
-                <h1 className="text-3xl font-bold mb-1 text-slate-900">ORÇAMENTO</h1>
-                <p className="text-sm text-slate-500 font-medium">Nº {budgetNumber} | {new Date().toLocaleDateString('pt-BR')}</p>
-              </div>
-              <div className="text-right">
-                <h2 className="text-xl font-bold text-slate-900">{companySettings?.companyName || 'InstalaControl'}</h2>
-                <p className="text-sm text-slate-600">{companySettings?.companySubtitle || 'Soluções em Climatização'}</p>
-                <p className="text-xs text-slate-400 mt-1">{companySettings?.phone || ''}</p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 p-6 rounded-lg mb-8 border border-slate-100">
-              <h3 className="text-xs font-bold uppercase tracking-wider mb-4 text-slate-400 flex items-center gap-2"><User size={12}/> Dados do Cliente</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                 <p><span className="font-bold text-slate-700">Nome:</span> {clientData.name}</p>
-                 <p><span className="font-bold text-slate-700">Telefone:</span> {clientData.phone}</p>
-                 <p className="col-span-2"><span className="font-bold text-slate-700">Endereço:</span> {clientData.address}</p>
-                 <p className="col-span-2"><span className="font-bold text-slate-700">Tipo de Serviço:</span> {serviceType}</p>
-              </div>
-            </div>
-
-            <table className="w-full text-left border-collapse mb-8">
-              <thead>
-                <tr className="border-b-2 border-slate-800">
-                  <th className="py-3 font-bold w-1/2 text-sm uppercase tracking-wider">Descrição do Serviço</th>
-                  <th className="py-3 font-bold text-center text-sm uppercase tracking-wider">Qtd</th>
-                  <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Unitário</th>
-                  <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, i) => (
-                  <tr key={i} className="border-b border-slate-100 text-sm">
-                    <td className="py-4 text-slate-700 font-medium">{item.description}</td>
-                    <td className="py-4 text-center text-slate-600">{item.qty}</td>
-                    <td className="py-4 text-right text-slate-600">R$ {item.price.toFixed(2)}</td>
-                    <td className="py-4 text-right font-bold text-slate-900">R$ {(item.qty * item.price).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="flex justify-end mb-12">
-               <div className="text-right bg-slate-50 p-6 rounded-lg border border-slate-100 min-w-[250px]">
-                 <p className="text-sm text-slate-500 mb-1 uppercase tracking-wider font-bold">Total Geral</p>
-                 <p className="text-3xl font-bold text-slate-900">R$ {totalBudget.toFixed(2)}</p>
-               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-8 border-t border-slate-200 pt-8">
-               <div>
-                  <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800"><DollarSign size={14} className="inline mr-1"/> Pagamento</h4>
-                  <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{paymentMethod} - {paymentTerms}</p>
-               </div>
-               <div>
-                  <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800">Validade</h4>
-                  <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{validity}</p>
-               </div>
-            </div>
-            
-            <div className="absolute bottom-10 left-10 right-10 text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
-               <p>{companySettings?.footerText || 'Obrigado pela preferência! Entre em contato para dúvidas.'}</p>
-            </div>
-         </div>
       </div>
     </div>
   );
@@ -1623,13 +1679,6 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
   };
   const revenueData = getMonthlyRevenueData();
 
-  // Dados para Gráfico de Pizza (Tipos)
-  const serviceTypeCount = monthlyServices.reduce((acc, curr) => {
-    acc[curr.type] = (acc[curr.type] || 0) + 1;
-    return acc;
-  }, {});
-  const serviceTypeData = Object.keys(serviceTypeCount).map(key => ({ name: key, value: serviceTypeCount[key] }));
-
   return (
     <div className="space-y-8 animate-fade-in pb-20 md:pb-0">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -1676,7 +1725,7 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Faturamento</p>
                 <h3 className="text-2xl font-bold text-slate-800 mt-1">
-                   R$ {monthlyRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {monthlyRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
               </div>
               <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
@@ -1691,7 +1740,7 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lucro Líquido</p>
                 <h3 className="text-2xl font-bold text-emerald-700 mt-1">
-                   R$ {monthlyProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {monthlyProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
                 <p className="text-xs text-emerald-600 mt-1 font-medium">{margin.toFixed(1)}% de margem</p>
               </div>
@@ -1707,7 +1756,7 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Serviços Realizados</p>
                 <h3 className="text-2xl font-bold text-slate-800 mt-1">
-                   {monthlyCompletedServicesCount}
+                    {monthlyCompletedServicesCount}
                 </h3>
               </div>
               <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><Wrench size={20} /></div>
@@ -1832,7 +1881,6 @@ export default function App() {
         }
       } catch (error) {
         console.error("Erro na autenticação:", error);
-        // Fallback para anônimo em caso de erro (ex: mismatch de token/config)
         try {
           await signInAnonymously(auth);
         } catch (anonError) {
