@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   Wrench, 
   TrendingUp, 
-  TrendingDown, 
   DollarSign, 
   Calendar, 
   Trash2, 
@@ -29,8 +28,7 @@ import {
   Bell,
   AlertCircle,
   Wallet,
-  Printer,
-  Share2
+  LogOut
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -63,23 +61,9 @@ import {
   getDoc
 } from 'firebase/firestore';
 
-// --- Estilos Globais (Animações Customizadas) ---
+// --- Estilos Globais Otimizados ---
 const GlobalStyles = () => (
   <style>{`
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    .animate-fade-in {
-      animation: fadeIn 0.4s ease-out forwards;
-    }
-    .animate-slide-in {
-      animation: slideIn 0.3s ease-out forwards;
-    }
     .pb-safe {
       padding-bottom: env(safe-area-inset-bottom);
     }
@@ -95,21 +79,32 @@ const GlobalStyles = () => (
       .print-only { display: block !important; }
       body { background: white; }
     }
-    /* Classe para folha A4 na tela */
+    /* Estilos do Papel A4 e Container de Escala */
     .a4-paper {
         width: 210mm;
         min-height: 297mm;
         background: white;
         margin: 0 auto;
-        box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        box-shadow: 0 0 15px rgba(0,0,0,0.15);
+        transform-origin: top center;
     }
-    /* Ajuste para mobile */
-    @media (max-width: 768px) {
-        .a4-wrapper {
-            transform: scale(0.6);
-            transform-origin: top center;
-            height: 100%;
-            overflow-y: auto;
+    /* Wrapper para aplicar zoom no mobile sem quebrar o layout */
+    .a4-scale-wrapper {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        padding-bottom: 20px;
+    }
+    @media (max-width: 800px) {
+        .a4-paper {
+            transform: scale(0.45); /* Reduz para 45% em celulares */
+            margin-bottom: -140mm; /* Compensa o espaço branco gerado pelo scale */
+        }
+    }
+    @media (min-width: 801px) and (max-width: 1024px) {
+        .a4-paper {
+            transform: scale(0.7);
+            margin-bottom: -80mm;
         }
     }
   `}</style>
@@ -149,7 +144,7 @@ const ToastContainer = ({ toasts, removeToast }) => {
         <div 
           key={toast.id} 
           className={`
-            pointer-events-auto min-w-[300px] p-4 rounded-xl shadow-xl border flex items-center gap-3 animate-slide-in
+            pointer-events-auto min-w-[300px] p-4 rounded-xl shadow-xl border flex items-center gap-3
             ${toast.type === 'success' ? 'bg-white border-emerald-100 text-emerald-800' : ''}
             ${toast.type === 'error' ? 'bg-white border-red-100 text-red-800' : ''}
             ${toast.type === 'info' ? 'bg-white border-blue-100 text-slate-800' : ''}
@@ -207,57 +202,46 @@ const SidebarItem = ({ icon, label, active, onClick }) => (
   </button>
 );
 
-const MobileBottomNav = ({ currentView, onChangeView, onOpenBudget }) => {
+// --- Navegação Mobile Otimizada com Botão Central ---
+const MobileBottomNav = ({ currentView, onChangeView, onAddBudget }) => {
+  const NavItem = ({ view, icon: Icon, label }) => {
+    const isActive = currentView === view;
+    return (
+      <button 
+        onClick={() => onChangeView(view)}
+        className={`flex flex-col items-center justify-center w-full space-y-1 transition-colors ${isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+      >
+        <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+        <span className={`text-[9px] ${isActive ? 'font-bold' : 'font-medium'}`}>{label}</span>
+      </button>
+    );
+  };
+
   return (
     <div className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-[90] pb-safe">
-      <div className="flex justify-around items-center h-20 px-4">
-        <button 
-          onClick={() => onChangeView('dashboard')}
-          className={`flex flex-col items-center justify-center w-16 space-y-1.5 ${currentView === 'dashboard' ? 'text-slate-900' : 'text-slate-400'}`}
-        >
-          <Home size={22} strokeWidth={currentView === 'dashboard' ? 2.5 : 2} />
-          <span className="text-[10px] font-medium">Início</span>
-        </button>
-
-        <button 
-          onClick={() => onChangeView('services')}
-          className={`flex flex-col items-center justify-center w-16 space-y-1.5 ${currentView === 'services' ? 'text-slate-900' : 'text-slate-400'}`}
-        >
-          <Wrench size={22} strokeWidth={currentView === 'services' ? 2.5 : 2} />
-          <span className="text-[10px] font-medium">Serviços</span>
-        </button>
-
-        <div className="relative -top-6">
+      <div className="flex justify-around items-center h-16 px-2">
+        <NavItem view="dashboard" icon={Home} label="Início" />
+        <NavItem view="services" icon={Wrench} label="Serviços" />
+        
+        {/* Botão Central de Ação */}
+        <div className="relative -top-5">
           <button 
-            onClick={onOpenBudget} 
-            className="flex items-center justify-center w-16 h-16 bg-slate-900 rounded-full text-white shadow-xl shadow-slate-300 active:scale-95 transition-transform border-4 border-white"
+            onClick={onAddBudget}
+            className="flex items-center justify-center w-14 h-14 bg-slate-900 rounded-full text-white shadow-xl shadow-slate-300 active:scale-95 transition-transform border-4 border-white"
           >
-            <Plus size={32} />
+            <Plus size={28} />
           </button>
         </div>
 
-        <button 
-          onClick={() => onChangeView('schedule')}
-          className={`flex flex-col items-center justify-center w-16 space-y-1.5 ${currentView === 'schedule' ? 'text-slate-900' : 'text-slate-400'}`}
-        >
-          <Calendar size={22} strokeWidth={currentView === 'schedule' ? 2.5 : 2} />
-          <span className="text-[10px] font-medium">Agenda</span>
-        </button>
-
-        <button 
-          onClick={() => onChangeView('settings')}
-          className={`flex flex-col items-center justify-center w-16 space-y-1.5 ${currentView === 'settings' ? 'text-slate-900' : 'text-slate-400'}`}
-        >
-          <Settings size={22} strokeWidth={currentView === 'settings' ? 2.5 : 2} />
-          <span className="text-[10px] font-medium">Ajustes</span>
-        </button>
+        <NavItem view="schedule" icon={Calendar} label="Agenda" />
+        <NavItem view="budget" icon={FileText} label="Orçamentos" />
       </div>
     </div>
   );
 };
 
 // ============================================================================
-// NOVO: MODAL DE VISUALIZAÇÃO DO ORÇAMENTO (PDF PREVIEW)
+// MODAL DE VISUALIZAÇÃO DO ORÇAMENTO (PDF PREVIEW) - OTIMIZADO
 // ============================================================================
 const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addToast }) => {
     const [isGenerating, setIsGenerating] = useState(false);
@@ -277,7 +261,13 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
         try {
           const element = document.getElementById('budget-preview-content');
           if (!element) throw new Error('Elemento de orçamento não encontrado.');
-    
+          
+          // Reseta transformações temporariamente para gerar o PDF limpo
+          const originalTransform = element.style.transform;
+          const originalMargin = element.style.marginBottom;
+          element.style.transform = 'none';
+          element.style.marginBottom = '0';
+
           const opt = {
             margin: 0,
             filename: `Orcamento_${budgetNumber}_${(clientData.name || 'Cliente').replace(/\s+/g, '_')}.pdf`,
@@ -286,8 +276,12 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
           };
           
-          // Importante: html2pdf funciona melhor com elementos visíveis
           await window.html2pdf().set(opt).from(element).save();
+          
+          // Restaura estilos visuais
+          element.style.transform = originalTransform;
+          element.style.marginBottom = originalMargin;
+
           addToast('Sucesso', 'Download concluído!', 'success');
         } catch (error) { 
           console.error(error); 
@@ -298,9 +292,8 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
     };
 
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm animate-fade-in p-0 md:p-4 overflow-hidden">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/90 p-0 md:p-4 overflow-hidden">
             <div className="bg-slate-100 w-full h-full md:rounded-2xl flex flex-col md:max-w-5xl md:h-[90vh] shadow-2xl relative">
-                {/* Header do Modal */}
                 <div className="bg-white px-4 py-3 border-b border-slate-200 flex justify-between items-center z-10 shrink-0">
                     <div className="flex items-center gap-3">
                         <FileText className="text-blue-600" size={24} />
@@ -317,77 +310,78 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
                     </div>
                 </div>
 
-                {/* Área de Scroll com o papel A4 */}
-                <div className="flex-1 overflow-auto bg-slate-200/50 p-4 md:p-8 flex justify-center items-start">
-                    {/* Elemento que será transformado em PDF */}
-                    <div id="budget-preview-content" className="a4-paper relative text-slate-800 font-sans p-10 shrink-0">
-                        <div className="absolute top-0 left-0 w-full h-3 bg-slate-800"></div>
-                        
-                        <div className="border-b-2 border-slate-800 pb-6 mb-8 flex justify-between items-start mt-4">
-                            <div>
-                                <h1 className="text-3xl font-bold mb-1 text-slate-900">ORÇAMENTO</h1>
-                                <p className="text-sm text-slate-500 font-medium">
-                                    Nº {budgetNumber} | {new Date(createdAt || Date.now()).toLocaleDateString('pt-BR')}
-                                </p>
+                <div className="flex-1 overflow-auto bg-slate-200/50 p-4 md:p-8">
+                    {/* Wrapper de escala para garantir que caiba na tela */}
+                    <div className="a4-scale-wrapper">
+                        <div id="budget-preview-content" className="a4-paper relative text-slate-800 font-sans p-10 shrink-0">
+                            <div className="absolute top-0 left-0 w-full h-3 bg-slate-800"></div>
+                            
+                            <div className="border-b-2 border-slate-800 pb-6 mb-8 flex justify-between items-start mt-4">
+                                <div>
+                                    <h1 className="text-3xl font-bold mb-1 text-slate-900">ORÇAMENTO</h1>
+                                    <p className="text-sm text-slate-500 font-medium">
+                                        Nº {budgetNumber} | {new Date(createdAt || Date.now()).toLocaleDateString('pt-BR')}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <h2 className="text-xl font-bold text-slate-900">{companySettings?.companyName || 'InstalaControl'}</h2>
+                                    <p className="text-sm text-slate-600">{companySettings?.companySubtitle || 'Soluções em Climatização'}</p>
+                                    <p className="text-xs text-slate-400 mt-1">{companySettings?.phone || ''}</p>
+                                </div>
                             </div>
-                            <div className="text-right">
-                                <h2 className="text-xl font-bold text-slate-900">{companySettings?.companyName || 'InstalaControl'}</h2>
-                                <p className="text-sm text-slate-600">{companySettings?.companySubtitle || 'Soluções em Climatização'}</p>
-                                <p className="text-xs text-slate-400 mt-1">{companySettings?.phone || ''}</p>
-                            </div>
-                        </div>
 
-                        <div className="bg-slate-50 p-6 rounded-lg mb-8 border border-slate-100">
-                            <h3 className="text-xs font-bold uppercase tracking-wider mb-4 text-slate-400 flex items-center gap-2"><User size={12}/> Dados do Cliente</h3>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <p><span className="font-bold text-slate-700">Nome:</span> {clientData.name}</p>
-                                <p><span className="font-bold text-slate-700">Telefone:</span> {clientData.phone}</p>
-                                <p className="col-span-2"><span className="font-bold text-slate-700">Endereço:</span> {clientData.address}</p>
-                                <p className="col-span-2"><span className="font-bold text-slate-700">Tipo de Serviço:</span> {serviceType}</p>
+                            <div className="bg-slate-50 p-6 rounded-lg mb-8 border border-slate-100">
+                                <h3 className="text-xs font-bold uppercase tracking-wider mb-4 text-slate-400 flex items-center gap-2"><User size={12}/> Dados do Cliente</h3>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <p><span className="font-bold text-slate-700">Nome:</span> {clientData.name}</p>
+                                    <p><span className="font-bold text-slate-700">Telefone:</span> {clientData.phone}</p>
+                                    <p className="col-span-2"><span className="font-bold text-slate-700">Endereço:</span> {clientData.address}</p>
+                                    <p className="col-span-2"><span className="font-bold text-slate-700">Tipo de Serviço:</span> {serviceType}</p>
+                                </div>
                             </div>
-                        </div>
 
-                        <table className="w-full text-left border-collapse mb-8">
-                            <thead>
-                                <tr className="border-b-2 border-slate-800">
-                                <th className="py-3 font-bold w-1/2 text-sm uppercase tracking-wider">Descrição do Serviço</th>
-                                <th className="py-3 font-bold text-center text-sm uppercase tracking-wider">Qtd</th>
-                                <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Unitário</th>
-                                <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items.map((item, i) => (
-                                <tr key={i} className="border-b border-slate-100 text-sm">
-                                    <td className="py-4 text-slate-700 font-medium">{item.description}</td>
-                                    <td className="py-4 text-center text-slate-600">{item.qty}</td>
-                                    <td className="py-4 text-right text-slate-600">R$ {item.price.toFixed(2)}</td>
-                                    <td className="py-4 text-right font-bold text-slate-900">R$ {(item.qty * item.price).toFixed(2)}</td>
-                                </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                            <table className="w-full text-left border-collapse mb-8">
+                                <thead>
+                                    <tr className="border-b-2 border-slate-800">
+                                    <th className="py-3 font-bold w-1/2 text-sm uppercase tracking-wider">Descrição do Serviço</th>
+                                    <th className="py-3 font-bold text-center text-sm uppercase tracking-wider">Qtd</th>
+                                    <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Unitário</th>
+                                    <th className="py-3 font-bold text-right text-sm uppercase tracking-wider">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items.map((item, i) => (
+                                    <tr key={i} className="border-b border-slate-100 text-sm">
+                                        <td className="py-4 text-slate-700 font-medium">{item.description}</td>
+                                        <td className="py-4 text-center text-slate-600">{item.qty}</td>
+                                        <td className="py-4 text-right text-slate-600">R$ {item.price.toFixed(2)}</td>
+                                        <td className="py-4 text-right font-bold text-slate-900">R$ {(item.qty * item.price).toFixed(2)}</td>
+                                    </tr>
+                                    ))}
+                                </tbody>
+                            </table>
 
-                        <div className="flex justify-end mb-12">
-                            <div className="text-right bg-slate-50 p-6 rounded-lg border border-slate-100 min-w-[250px]">
-                                <p className="text-sm text-slate-500 mb-1 uppercase tracking-wider font-bold">Total Geral</p>
-                                <p className="text-3xl font-bold text-slate-900">R$ {Number(total).toFixed(2)}</p>
+                            <div className="flex justify-end mb-12">
+                                <div className="text-right bg-slate-50 p-6 rounded-lg border border-slate-100 min-w-[250px]">
+                                    <p className="text-sm text-slate-500 mb-1 uppercase tracking-wider font-bold">Total Geral</p>
+                                    <p className="text-3xl font-bold text-slate-900">R$ {Number(total).toFixed(2)}</p>
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="grid grid-cols-2 gap-8 border-t border-slate-200 pt-8">
-                            <div>
-                                <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800"><DollarSign size={14} className="inline mr-1"/> Pagamento</h4>
-                                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{paymentMethod} - {paymentTerms}</p>
+                            <div className="grid grid-cols-2 gap-8 border-t border-slate-200 pt-8">
+                                <div>
+                                    <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800"><DollarSign size={14} className="inline mr-1"/> Pagamento</h4>
+                                    <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{paymentMethod} - {paymentTerms}</p>
+                                </div>
+                                <div>
+                                    <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800">Validade</h4>
+                                    <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{validity}</p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 className="font-bold mb-2 text-sm uppercase tracking-wider text-slate-800">Validade</h4>
-                                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded border border-slate-100">{validity}</p>
+                            
+                            <div className="absolute bottom-10 left-10 right-10 text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
+                                <p>{companySettings?.footerText || 'Obrigado pela preferência! Entre em contato para dúvidas.'}</p>
                             </div>
-                        </div>
-                        
-                        <div className="absolute bottom-10 left-10 right-10 text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
-                            <p>{companySettings?.footerText || 'Obrigado pela preferência! Entre em contato para dúvidas.'}</p>
                         </div>
                     </div>
                 </div>
@@ -397,33 +391,16 @@ const BudgetPreviewModal = ({ isOpen, onClose, budgetData, companySettings, addT
 };
 
 // ============================================================================
-// VIEWS E MODAIS
+// VIEWS (OTIMIZADAS)
 // ============================================================================
 
-const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new', addToast, companySettings }) => {
-  const [activeTab, setActiveTab] = useState(initialTab);
+// --- Histórico de Orçamentos (Substitui BudgetGeneratorView para remover form da tela principal) ---
+const BudgetHistoryView = ({ userId, onScheduleFromBudget, addToast, companySettings }) => {
   const [savedBudgets, setSavedBudgets] = useState([]);
-  const [viewingBudget, setViewingBudget] = useState(null); 
-  const [isEditing, setIsEditing] = useState(false);
-  
-  // Controle do Modal de Preview
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedBudget, setSelectedBudget] = useState(null);
 
-  useEffect(() => {
-    if (initialTab) setActiveTab(initialTab);
-  }, [initialTab]);
-
-  const [budgetNumber, setBudgetNumber] = useState('');
-  const [clientData, setClientData] = useState({ name: '', address: '', phone: '' });
-  const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState({ description: '', qty: 1, price: '' });
-  const [paymentTerms, setPaymentTerms] = useState('50% na entrada, 50% na finalização');
-  const [validity, setValidity] = useState('15 dias');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('Pix');
-  const [serviceType, setServiceType] = useState('Instalação Split');
-
-  // Carrega html2pdf via CDN de forma segura
+  // Carrega html2pdf
   useEffect(() => {
     const scriptId = 'html2pdf-script';
     if (!document.getElementById(scriptId)) {
@@ -446,415 +423,99 @@ const BudgetGeneratorView = ({ userId, onScheduleFromBudget, initialTab = 'new',
     return () => unsubscribe();
   }, [userId]);
 
-  const nextBudgetNumber = savedBudgets.reduce((max, b) => {
-    const num = parseInt(b.budgetNumber, 10);
-    return !isNaN(num) && num > max ? num : max;
-  }, 0) + 1;
-  const nextBudgetNumberString = String(nextBudgetNumber).padStart(3, '0');
-
-  const resetForm = () => {
-    setViewingBudget(null);
-    setIsEditing(false);
-    setBudgetNumber('');
-    setClientData({ name: '', address: '', phone: '' });
-    setItems([]);
-    setPaymentTerms('50% na entrada, 50% na finalização');
-    setValidity('15 dias');
-    setPaymentMethod('Pix');
-    setServiceType('Instalação Split');
+  const handleOpenPreview = (budget) => {
+    setSelectedBudget(budget);
+    setIsPreviewOpen(true);
   };
 
-  const handleAddItem = () => {
-    if (!newItem.description || !newItem.price) return;
-    setItems([...items, { id: Date.now(), ...newItem, price: Number(newItem.price), qty: Number(newItem.qty) }]);
-    setNewItem({ description: '', qty: 1, price: '' });
+  const handleDeleteBudget = async (id) => { 
+    if(window.confirm("Apagar este orçamento?")) { 
+      await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'budgets', id)); 
+      addToast('Deletado', 'Orçamento removido.', 'info'); 
+    } 
   };
-
-  const handleRemoveItem = (id) => {
-    setItems(items.filter(i => i.id !== id));
-  };
-
-  const totalBudget = items.reduce((acc, item) => acc + (item.price * item.qty), 0);
-
-  const handleSaveBudget = async () => {
-    if (!clientData.name || items.length === 0) {
-      addToast('Atenção', 'Preencha o cliente e adicione itens.', 'error');
-      return;
-    }
-    
-    setIsGenerating(true);
-    try {
-      let savedId;
-      if (viewingBudget && isEditing) {
-         await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'budgets', viewingBudget.id), {
-          clientData,
-          items,
-          paymentTerms,
-          validity,
-          total: totalBudget,
-          updatedAt: new Date().toISOString(),
-          paymentMethod,
-          serviceType
-        });
-        addToast('Sucesso', 'Orçamento atualizado!', 'success');
-        setIsEditing(false);
-        setViewingBudget({
-              ...viewingBudget,
-              clientData, items, paymentTerms, validity, total: totalBudget, paymentMethod, serviceType
-        });
-        savedId = viewingBudget.id;
-      } else {
-        const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'budgets'), {
-          budgetNumber: budgetNumber || nextBudgetNumberString, 
-          clientData,
-          items,
-          paymentTerms,
-          validity,
-          total: totalBudget,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          paymentMethod,
-          serviceType
-        });
-        addToast('Sucesso', 'Orçamento salvo no histórico!', 'success');
-        setActiveTab('history');
-        resetForm();
-      }
-    } catch (e) {
-      console.error(e);
-      addToast('Erro', 'Falha ao salvar orçamento.', 'error');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Prepara os dados para o modal de visualização
-  const getPreviewData = () => {
-      // Se estiver visualizando um salvo, usa ele. Se não, usa o estado do form.
-      if (viewingBudget && !isEditing) return viewingBudget;
-      
-      return {
-          budgetNumber: budgetNumber || nextBudgetNumberString,
-          clientData,
-          items,
-          total: totalBudget,
-          paymentTerms,
-          validity,
-          paymentMethod,
-          serviceType,
-          createdAt: new Date().toISOString()
-      };
-  };
-
-  const handleOpenPreview = () => {
-      if (!clientData.name || items.length === 0) {
-          addToast('Atenção', 'Preencha os dados básicos para visualizar.', 'info');
-          return;
-      }
-      setIsPreviewOpen(true);
-  };
-
-  const handleDeleteBudget = async (id) => {
-    if(window.confirm("Apagar este orçamento?")) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'budgets', id));
-      addToast('Deletado', 'Orçamento removido.', 'info');
-    }
-  };
-
-  const handleLoadBudget = (budget) => {
-    setViewingBudget(budget);
-    setIsEditing(false);
-    setClientData(budget.clientData);
-    setItems(budget.items);
-    setPaymentTerms(budget.paymentTerms);
-    setValidity(budget.validity);
-    setBudgetNumber(budget.budgetNumber);
-    setPaymentMethod(budget.paymentMethod || 'Pix');
-    setServiceType(budget.serviceType || 'Instalação Split');
-    setActiveTab('new');
-  };
-
-  const isReadOnly = viewingBudget && !isEditing;
 
   return (
-    <div className="animate-fade-in flex flex-col xl:flex-row gap-6 pb-20 md:pb-0 h-full">
-      
-      {/* MODAL DE PREVIEW */}
-      <BudgetPreviewModal 
-        isOpen={isPreviewOpen} 
-        onClose={() => setIsPreviewOpen(false)} 
-        budgetData={getPreviewData()}
-        companySettings={companySettings}
-        addToast={addToast}
-      />
+    <div className="flex flex-col h-full pb-20 md:pb-0">
+      <BudgetPreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} budgetData={selectedBudget} companySettings={companySettings} addToast={addToast} />
 
-      <div className="flex-1 space-y-4 flex flex-col no-print">
-        <header>
-          <h2 className="text-2xl font-bold text-slate-800">Orçamentos</h2>
-          <p className="text-slate-500 text-sm">Gerencie propostas e agende serviços futuros.</p>
-        </header>
+      <header className="mb-4">
+        <h2 className="text-2xl font-bold text-slate-800">Meus Orçamentos</h2>
+        <p className="text-slate-500 text-sm">Histórico de propostas geradas.</p>
+      </header>
 
-        <div className="flex p-1 bg-slate-200 rounded-lg w-full md:w-fit">
-          <button 
-            onClick={() => { setActiveTab('new'); resetForm(); }}
-            className={`flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'new' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Novo Orçamento
-          </button>
-          <button 
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Histórico Salvo
-          </button>
-        </div>
-
-        {activeTab === 'new' && (
-          <>
-            <div className="space-y-4 overflow-y-auto pr-1 flex-1">
-              {viewingBudget && !isEditing && (
-                <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-md flex items-center justify-between animate-fade-in">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Search size={16} />
-                    Visualizando Orçamento #{budgetNumber}
-                  </div>
-                  <button onClick={resetForm} className="text-xs hover:underline font-bold">Fechar</button>
-                </div>
-              )}
-              
-              {isEditing && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-md flex items-center justify-between animate-fade-in">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Pencil size={16} />
-                    Editando Orçamento #{budgetNumber}
-                  </div>
-                </div>
-              )}
-
-              <Card className="p-4 md:p-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText size={16} className="text-slate-500" />
-                  <label className="text-sm font-semibold text-slate-700">Número do Orçamento</label>
-                </div>
-                <div className="relative">
-                    <input 
-                      type="text" 
-                      placeholder="Ex: 001" 
-                      className="w-full p-2.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-slate-800 outline-none text-lg font-bold text-slate-800 bg-slate-100 cursor-not-allowed" 
-                      value={budgetNumber || (viewingBudget ? '' : nextBudgetNumberString)} 
-                      readOnly={true} 
-                    />
-                    <Shield size={14} className="absolute right-3 top-3.5 text-slate-400" />
-                </div>
-              </Card>
-
-              <Card className="p-4 md:p-6 space-y-4">
-                <h3 className="font-semibold text-slate-800 border-b border-slate-100 pb-2 mb-4 text-sm uppercase tracking-wide">1. Cliente e Local</h3>
-                <div className="space-y-3">
-                  <input type="text" placeholder="Nome do Cliente" className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600' : 'focus:ring-1 focus:ring-slate-800'}`} 
-                    value={clientData.name} onChange={e => setClientData({...clientData, name: e.target.value})} readOnly={isReadOnly} />
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" placeholder="Telefone / Contato" className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600' : 'focus:ring-1 focus:ring-slate-800'}`}
-                      value={clientData.phone} onChange={e => setClientData({...clientData, phone: e.target.value})} readOnly={isReadOnly} />
-                    
-                    <input type="text" placeholder="Endereço / Local da Instalação" className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600' : 'focus:ring-1 focus:ring-slate-800'}`}
-                    value={clientData.address} onChange={e => setClientData({...clientData, address: e.target.value})} readOnly={isReadOnly} />
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-4 md:p-6 space-y-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2 mb-4">
-                    <h3 className="font-semibold text-slate-800 text-sm uppercase tracking-wide">2. Serviço e Itens</h3>
-                </div>
-                
-                {/* SELETOR DE TIPO DE SERVIÇO */}
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Serviço Principal</label>
-                    <select className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600 pointer-events-none' : 'focus:ring-1 focus:ring-slate-800'}`}
-                      value={serviceType} onChange={e => setServiceType(e.target.value)} disabled={isReadOnly}>
-                      <option>Instalação Split</option>
-                      <option>Instalação ACJ</option>
-                      <option>Manutenção Preventiva</option>
-                      <option>Manutenção Corretiva</option>
-                      <option>Limpeza Química</option>
-                      <option>Carga de Gás</option>
-                      <option>Infraestrutura</option>
-                      <option>Visita Técnica</option>
-                    </select>
-                </div>
-
-                <div className={`flex flex-col md:flex-row gap-2 ${isReadOnly ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <input type="text" placeholder="Descrição (Ex: Mão de obra)" className="flex-[2] p-2 border border-slate-300 rounded-md focus:outline-none focus:border-slate-800" value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} />
-                  <div className="flex gap-2">
-                    <input type="number" placeholder="Qtd" className="w-20 p-2 border border-slate-300 rounded-md focus:outline-none focus:border-slate-800" value={newItem.qty} onChange={e => setNewItem({...newItem, qty: e.target.value})} />
-                    <input type="number" placeholder="R$ Unit" className="w-28 p-2 border border-slate-300 rounded-md focus:outline-none focus:border-slate-800" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} />
-                    <Button onClick={handleAddItem} className="py-2 px-3 bg-slate-800"><Plus size={18} /></Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2 mt-4 bg-slate-50 p-4 rounded-md border border-slate-200">
-                  {items.length === 0 ? <p className="text-center text-slate-400 text-sm italic">Lista vazia.</p> : 
-                    items.map(item => (
-                      <div key={item.id} className="flex justify-between items-center text-sm bg-white p-2 rounded border border-slate-100">
-                        <div className="flex-1">
-                          <span className="font-medium text-slate-700">{item.description}</span>
-                          <div className="text-xs text-slate-500">{item.qty}x R$ {item.price}</div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-bold text-slate-800">R$ {(item.qty * item.price).toFixed(2)}</span>
-                          {!isReadOnly && (
-                             <button onClick={() => handleRemoveItem(item.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  }
-                  {items.length > 0 && (
-                    <div className="flex justify-between items-center pt-3 border-t border-slate-200 mt-2">
-                      <span className="font-bold text-slate-600">Total Estimado</span>
-                      <span className="font-bold text-xl text-slate-800">R$ {totalBudget.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              </Card>
-
-              <Card className="p-4 md:p-6 space-y-4">
-                <h3 className="font-semibold text-slate-800 border-b border-slate-100 pb-2 mb-4 text-sm uppercase tracking-wide">
-                  <Wallet size={16} className="inline mr-2 text-slate-500" />
-                  3. Pagamento e Validade
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Forma de Pagamento</label>
-                    <select className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600 pointer-events-none' : 'focus:ring-1 focus:ring-slate-800'}`}
-                      value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} disabled={isReadOnly}>
-                      <option>Pix</option>
-                      <option>Dinheiro</option>
-                      <option>Cartão de Crédito</option>
-                      <option>Cartão de Débito</option>
-                      <option>Boleto Bancário</option>
-                      <option>Transferência</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Validade</label>
-                    <input type="text" className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600' : 'focus:ring-1 focus:ring-slate-800'}`}
-                      value={validity} onChange={e => setValidity(e.target.value)} readOnly={isReadOnly} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">Condições de Pagamento</label>
-                    <input type="text" className={`w-full p-2.5 border border-slate-300 rounded-md outline-none transition-all ${isReadOnly ? 'bg-slate-50 text-slate-600' : 'focus:ring-1 focus:ring-slate-800'}`}
-                      value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} readOnly={isReadOnly} />
-                  </div>
-                </div>
-              </Card>
+      <div className="flex-1 overflow-y-auto space-y-3 no-print">
+        {savedBudgets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white/50">
+            <div className="bg-slate-100 p-4 rounded-full mb-4">
+                <FileText size={32} className="opacity-50" />
             </div>
-
-            {/* Barra de Ações Inferior */}
-            <div className="flex gap-2 pt-2 no-print">
-               {(!viewingBudget || isEditing) ? (
-                   <>
-                      {isEditing && (
-                          <Button onClick={() => handleLoadBudget(viewingBudget)} variant="secondary" className="flex-1 border-slate-400 text-slate-700">
-                           Cancelar
-                          </Button>
-                      )}
-                      <Button onClick={handleSaveBudget} variant="secondary" className="flex-1 border-slate-400 text-slate-700" disabled={isGenerating}>
-                        <Save size={20} /> {isEditing ? 'Salvar Alterações' : 'Salvar no Sistema'}
-                      </Button>
-                   </>
-               ) : (
-                  <>
-                    <Button onClick={resetForm} variant="secondary" className="flex-1 border-slate-400 text-slate-700">
-                      <Plus size={20} /> Novo
-                    </Button>
-                    <Button onClick={() => setIsEditing(true)} variant="secondary" className="flex-1 border-blue-400 text-blue-700 hover:bg-blue-50">
-                      <Pencil size={20} /> Editar
-                    </Button>
-                  </>
-               )}
-              
-              <Button onClick={handleOpenPreview} variant="success" className="flex-1 bg-emerald-700 hover:bg-emerald-800" disabled={isGenerating}>
-                {isGenerating ? '...' : <><Search size={20} /> Gerar & Visualizar</>}
-              </Button>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'history' && (
-          <div className="flex-1 overflow-y-auto space-y-3 no-print">
-            {savedBudgets.length === 0 ? (
-              <div className="text-center py-16 text-slate-400 border-2 border-dashed border-slate-200 rounded-lg">
-                <History size={48} className="mx-auto mb-3 opacity-30" />
-                <p>Nenhum orçamento salvo.</p>
-              </div>
-            ) : (
-              savedBudgets.map(budget => (
-                <Card key={budget.id} className="p-4 hover:border-blue-400 transition-colors group">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
-                          #{budget.budgetNumber || 'S/N'}
-                        </span>
-                        {budget.status === 'scheduled' && (
-                          <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-                            Agendado
-                          </span>
-                        )}
-                      </div>
-                      <h4 className="font-bold text-slate-800 mt-1">{budget.clientData.name}</h4>
-                      <p className="text-xs text-slate-500 flex items-center gap-1">
-                        <Calendar size={10} /> {new Date(budget.createdAt).toLocaleDateString('pt-BR')}
-                      </p>
-                    </div>
-                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded text-sm">
-                      R$ {Number(budget.total).toFixed(2)}
-                    </span>
-                  </div>
-                  
-                  <div className="text-xs text-slate-500 mb-4 line-clamp-2">
-                    {budget.items.map(i => `${i.qty}x ${i.description}`).join(', ')}
-                  </div>
-
-                  <div className="flex gap-2 pt-2 border-t border-slate-100">
-                    <button 
-                      onClick={() => handleLoadBudget(budget)}
-                      className="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors"
-                    >
-                      <Search size={14} /> Detalhes / PDF
-                    </button>
-
-                    {budget.status === 'scheduled' ? (
-                      <button 
-                        disabled
-                        className="flex-1 bg-slate-100 text-slate-400 text-xs font-bold py-2 rounded flex items-center justify-center gap-2 cursor-not-allowed border border-slate-200"
-                      >
-                        <CheckCircle size={14} /> Já Agendado
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => onScheduleFromBudget(budget)}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors"
-                      >
-                        <Calendar size={14} /> Agendar Visita
-                      </button>
-                    )}
-                    
-                    <button 
-                      onClick={() => handleDeleteBudget(budget.id)}
-                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </Card>
-              ))
-            )}
+            <p className="font-medium">Nenhum orçamento salvo.</p>
+            <p className="text-xs max-w-[200px] text-center mt-2">Use o botão <strong className="text-slate-600">+</strong> no menu para criar seu primeiro orçamento.</p>
           </div>
+        ) : (
+          savedBudgets.map(budget => (
+            <Card key={budget.id} className="p-4 hover:border-blue-400 transition-colors group">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
+                      #{budget.budgetNumber || 'S/N'}
+                    </span>
+                    {budget.status === 'scheduled' && (
+                      <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                        Agendado
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="font-bold text-slate-800 mt-1">{budget.clientData.name}</h4>
+                  <p className="text-xs text-slate-500 flex items-center gap-1">
+                    <Calendar size={10} /> {new Date(budget.createdAt).toLocaleDateString('pt-BR')}
+                  </p>
+                </div>
+                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded text-sm">
+                  R$ {Number(budget.total).toFixed(2)}
+                </span>
+              </div>
+              
+              <div className="text-xs text-slate-500 mb-4 line-clamp-2">
+                {budget.items.map(i => `${i.qty}x ${i.description}`).join(', ')}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button 
+                  onClick={() => handleOpenPreview(budget)}
+                  className="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Search size={14} /> Visualizar PDF
+                </button>
+
+                {budget.status === 'scheduled' ? (
+                  <button 
+                    disabled
+                    className="flex-1 bg-slate-100 text-slate-400 text-xs font-bold py-2 rounded flex items-center justify-center gap-2 cursor-not-allowed border border-slate-200"
+                  >
+                    <CheckCircle size={14} /> Já Agendado
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => onScheduleFromBudget(budget)}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Calendar size={14} /> Agendar Visita
+                  </button>
+                )}
+                
+                <button 
+                  onClick={() => handleDeleteBudget(budget.id)}
+                  className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                  title="Excluir"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </Card>
+          ))
         )}
       </div>
     </div>
@@ -889,7 +550,7 @@ const SettingsView = ({ userId, addToast, settings, onSaveSettings }) => {
   };
 
   return (
-    <div className="animate-fade-in max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto">
       <header className="mb-8">
         <h2 className="text-2xl font-bold text-slate-800">Configurações da Empresa</h2>
         <p className="text-slate-500 text-sm">Personalize como sua empresa aparece nos orçamentos.</p>
@@ -944,19 +605,11 @@ const SettingsView = ({ userId, addToast, settings, onSaveSettings }) => {
           {loading ? 'Salvando...' : 'Salvar Alterações'}
         </Button>
       </Card>
-      
-      <div className="mt-8 bg-blue-50 border border-blue-100 p-4 rounded-xl flex gap-3 text-blue-800 text-sm">
-        <div className="mt-0.5"><Bell size={16}/></div>
-        <div>
-          <p className="font-bold">Dica Pro:</p>
-          <p>Essas informações aparecerão automaticamente no cabeçalho e rodapé de todos os PDFs gerados na aba de Orçamentos.</p>
-        </div>
-      </div>
     </div>
   );
 };
 
-// --- Modal de Novo Orçamento (Dashboard) ---
+// --- Modal de Novo Orçamento (Agora é a forma principal de criar) ---
 const AddBudgetModal = ({ isOpen, onClose, onSave, isSaving, nextBudgetNumber, addToast }) => {
   const [formData, setFormData] = useState({
     budgetNumber: '',
@@ -1028,14 +681,14 @@ const AddBudgetModal = ({ isOpen, onClose, onSave, isSaving, nextBudgetNumber, a
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center sm:p-4 bg-slate-900/60 p-0">
       <div className="bg-white w-full md:w-full max-w-2xl h-[90vh] md:h-auto md:max-h-[90vh] rounded-t-3xl md:rounded-2xl flex flex-col border-t md:border border-slate-100 shadow-2xl">
         <div className="w-full flex justify-center pt-3 pb-1 md:hidden">
             <div className="w-12 h-1.5 bg-slate-200 rounded-full"></div>
         </div>
         <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white">
           <div>
-            <h3 className="font-bold text-slate-800 text-lg">Novo Orçamento Rápido</h3>
+            <h3 className="font-bold text-slate-800 text-lg">Novo Orçamento</h3>
             <p className="text-slate-500 text-xs">Crie uma proposta comercial.</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
@@ -1170,7 +823,7 @@ const AddBudgetModal = ({ isOpen, onClose, onSave, isSaving, nextBudgetNumber, a
         <div className="p-5 border-t border-slate-100 bg-white flex gap-3 pb-8 md:pb-5">
           <Button onClick={onClose} variant="secondary" className="flex-1" disabled={isSaving}>Cancelar</Button>
           <Button type="submit" form="budgetForm" className="flex-1" disabled={isSaving}>
-            {isSaving ? 'Gerando...' : 'Gerar Orçamento'}
+            {isSaving ? 'Gerar Orçamento' : 'Gerar Orçamento'}
           </Button>
         </div>
       </div>
@@ -1178,7 +831,6 @@ const AddBudgetModal = ({ isOpen, onClose, onSave, isSaving, nextBudgetNumber, a
   );
 };
 
-// --- Modal de Novo Agendamento ---
 const AddAppointmentModal = ({ isOpen, onClose, onSave, isSaving, initialData }) => {
   const [formData, setFormData] = useState({
     client: '',
@@ -1218,7 +870,7 @@ const AddAppointmentModal = ({ isOpen, onClose, onSave, isSaving, initialData })
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center sm:p-4 bg-slate-900/60 p-0">
       <div className="bg-white w-full md:w-full max-w-lg h-[90vh] md:h-auto rounded-t-3xl md:rounded-2xl flex flex-col border-t md:border border-slate-100 shadow-2xl">
         <div className="w-full flex justify-center pt-3 pb-1 md:hidden">
             <div className="w-12 h-1.5 bg-slate-200 rounded-full"></div>
@@ -1322,7 +974,6 @@ const AddAppointmentModal = ({ isOpen, onClose, onSave, isSaving, initialData })
   );
 };
 
-// --- Modal de Novo/Editar Serviço (Financeiro - Conclusão) ---
 const AddServiceModal = ({ isOpen, onClose, onSave, isSaving, initialData }) => {
   const [formData, setFormData] = useState({
     client: '',
@@ -1378,7 +1029,7 @@ const AddServiceModal = ({ isOpen, onClose, onSave, isSaving, initialData }) => 
   const modalTitle = isEditing ? 'Editar Registro' : (initialData?.origin === 'appointment' ? 'Concluir Serviço' : 'Novo Registro Financeiro');
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center sm:p-4 bg-slate-900/60 p-0">
       <div className="bg-white w-full md:w-full max-w-lg h-[90vh] md:h-auto rounded-t-3xl md:rounded-2xl flex flex-col border-t md:border border-slate-200 shadow-2xl">
         
         <div className="w-full flex justify-center pt-3 pb-1 md:hidden">
@@ -1632,37 +1283,35 @@ const ScheduleView = ({ appointments, onAddAppointment, onDeleteAppointment, onC
   );
 };
 
-// --- View do Dashboard ---
+// --- View do Dashboard (Otimizado) ---
 const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppointment }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  // --- Lógica para a Agenda do Dia ---
-  const today = new Date();
-  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const todayAppointments = appointments
-    .filter(a => a.date === todayString)
-    .sort((a, b) => a.time.localeCompare(b.time));
-
-  const filterByDate = (items) => {
-    return items.filter(item => {
+  const monthlyServices = useMemo(() => {
+    return services.filter(item => {
       const itemDate = new Date(item.date);
       return itemDate.getMonth() === selectedMonth && itemDate.getFullYear() === selectedYear;
     });
-  };
+  }, [services, selectedMonth, selectedYear]);
 
-  const monthlyServices = filterByDate(services);
+  const financialData = useMemo(() => {
+    const revenue = monthlyServices.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
+    const expenses = monthlyServices.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0);
+    const profit = revenue - expenses;
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+    return { revenue, expenses, profit, margin };
+  }, [monthlyServices]);
 
-  // Cálculo de Lucro e Despesas (Data Science/Analysis)
-  const monthlyRevenue = monthlyServices.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
-  const monthlyExpenses = monthlyServices.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0); // Assumindo que salvamos 'cost' no objeto
-  const monthlyProfit = monthlyRevenue - monthlyExpenses;
-  const margin = monthlyRevenue > 0 ? (monthlyProfit / monthlyRevenue) * 100 : 0;
+  const todayAppointments = useMemo(() => {
+    const today = new Date();
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return appointments
+      .filter(a => a.date === todayString)
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }, [appointments]);
 
-  const monthlyCompletedServicesCount = monthlyServices.length;
-
-  // Gráfico de Área (Receita Anual)
-  const getMonthlyRevenueData = () => {
+  const revenueData = useMemo(() => {
     const data = Array(12).fill(0).map((_, i) => ({
       name: new Date(0, i).toLocaleString('pt-BR', { month: 'short' }),
       revenue: 0,
@@ -1676,8 +1325,9 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
       }
     });
     return data;
-  };
-  const revenueData = getMonthlyRevenueData();
+  }, [services, selectedYear]);
+
+  const today = new Date();
 
   return (
     <div className="space-y-8 animate-fade-in pb-20 md:pb-0">
@@ -1710,6 +1360,7 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
             </select>
           </div>
 
+          {/* Botão Desktop */}
           <div className="hidden md:block">
             <Button onClick={onOpenBudget} className="bg-slate-900 text-white shadow-lg shadow-slate-300">
               <Plus size={18} /> Novo Orçamento
@@ -1718,14 +1369,13 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
         </div>
       </header>
 
-      {/* KPIs com Lucro */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="p-6 relative overflow-hidden flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Faturamento</p>
                 <h3 className="text-2xl font-bold text-slate-800 mt-1">
-                    R$ {monthlyRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {financialData.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
               </div>
               <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
@@ -1740,14 +1390,14 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lucro Líquido</p>
                 <h3 className="text-2xl font-bold text-emerald-700 mt-1">
-                    R$ {monthlyProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {financialData.profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
-                <p className="text-xs text-emerald-600 mt-1 font-medium">{margin.toFixed(1)}% de margem</p>
+                <p className="text-xs text-emerald-600 mt-1 font-medium">{financialData.margin.toFixed(1)}% de margem</p>
               </div>
               <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><TrendingUp size={20} /></div>
             </div>
             <div className="mt-4 h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-               <div className="h-full bg-emerald-500" style={{width: `${margin}%`}}></div>
+               <div className="h-full bg-emerald-500" style={{width: `${financialData.margin}%`}}></div>
             </div>
           </Card>
 
@@ -1756,7 +1406,7 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Serviços Realizados</p>
                 <h3 className="text-2xl font-bold text-slate-800 mt-1">
-                    {monthlyCompletedServicesCount}
+                    {monthlyServices.length}
                 </h3>
               </div>
               <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><Wrench size={20} /></div>
@@ -1765,7 +1415,6 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
       </div>
 
       <div className="flex flex-col md:grid md:grid-cols-3 gap-6">
-        {/* Agenda do Dia - Ordem 1 no Mobile */}
         <Card className="p-0 order-1 md:order-2 md:col-span-1 h-full flex flex-col">
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center rounded-t-2xl">
             <div>
@@ -1799,7 +1448,6 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
           </div>
         </Card>
 
-        {/* Gráfico Principal */}
         <div className="order-2 md:order-1 md:col-span-2">
             <Card className="p-6 md:p-8 h-full">
                 <div className="flex justify-between items-center mb-8">
@@ -1847,7 +1495,6 @@ const DashboardView = ({ services, appointments, onOpenBudget, onCompleteAppoint
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
-  const [budgetTab, setBudgetTab] = useState('new'); 
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -1861,9 +1508,8 @@ export default function App() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [user, setUser] = useState(null);
-
-  // Sistema de Toasts
   const [toasts, setToasts] = useState([]);
+
   const addToast = (title, message, type = 'info') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, title, message, type }]);
@@ -1881,11 +1527,7 @@ export default function App() {
         }
       } catch (error) {
         console.error("Erro na autenticação:", error);
-        try {
-          await signInAnonymously(auth);
-        } catch (anonError) {
-          console.error("Erro na autenticação anônima:", anonError);
-        }
+        try { await signInAnonymously(auth); } catch (anonError) {}
       }
     };
     initAuth();
@@ -1919,31 +1561,21 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  // Carregar Configurações
   useEffect(() => {
     if (!user) return;
     const loadSettings = async () => {
       try {
         const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data());
-        }
-      } catch (e) {
-        console.error("Erro carregar settings", e);
-      }
+        if (docSnap.exists()) { setSettings(docSnap.data()); }
+      } catch (e) { console.error("Erro carregar settings", e); }
     };
     loadSettings();
   }, [user]);
 
   const handleSaveSettings = async (newSettings) => {
     if (!user) return;
-    try {
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), newSettings);
-      setSettings(newSettings);
-    } catch (e) {
-      throw e;
-    }
+    try { await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), newSettings); setSettings(newSettings); } catch (e) { throw e; }
   };
 
   const handleSaveBudgetFromModal = async (budgetData) => {
@@ -1952,15 +1584,10 @@ export default function App() {
     try {
       await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'budgets'), budgetData);
       addToast('Sucesso', 'Orçamento gerado com sucesso!', 'success');
-      setIsBudgetModalOpen(false);
-      setBudgetTab('history'); 
-      setCurrentView('budget');
-    } catch (e) {
-      console.error(e);
-      addToast('Erro', 'Erro ao salvar orçamento.', 'error');
-    } finally {
-      setIsSaving(false);
-    }
+      setIsBudgetModalOpen(false); 
+      // Se não estiver na aba de orçamento, vai pra ela
+      if (currentView !== 'budget') setCurrentView('budget');
+    } catch (e) { console.error(e); addToast('Erro', 'Erro ao salvar orçamento.', 'error'); } finally { setIsSaving(false); }
   };
 
   const handleSaveService = async (serviceData) => {
@@ -1969,78 +1596,26 @@ export default function App() {
     try {
       const isEditing = serviceToEdit?.id && serviceToEdit?.origin !== 'appointment';
       if (isEditing) {
-        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'services', serviceToEdit.id), {
-          ...serviceData,
-          updatedAt: new Date().toISOString()
-        });
+        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'services', serviceToEdit.id), { ...serviceData, updatedAt: new Date().toISOString() });
         addToast('Atualizado', 'Serviço atualizado!', 'success');
       } else {
-        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'services'), {
-          ...serviceData,
-          createdAt: new Date().toISOString()
-        });
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'services'), { ...serviceData, createdAt: new Date().toISOString() });
         addToast('Salvo', 'Novo serviço registrado!', 'success');
-        
-        // Auto-agenda se for data futura
-        const today = new Date();
-        today.setHours(0,0,0,0);
+        const today = new Date(); today.setHours(0,0,0,0);
         const serviceDate = new Date(serviceData.date + 'T00:00:00');
-        if (serviceDate > today) {
-           await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'appointments'), {
-             client: serviceData.client, type: serviceData.type, date: serviceData.date, time: '08:00', status: 'scheduled_auto', createdAt: new Date().toISOString(), notes: 'Agendado automaticamente.', price: serviceData.price 
-           });
-           addToast('Agenda', 'Visita agendada automaticamente.', 'info');
-        }
-        if (serviceToEdit && serviceToEdit.origin === 'appointment') {
-          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'appointments', serviceToEdit.id));
-        }
+        if (serviceDate > today) { await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'appointments'), { client: serviceData.client, type: serviceData.type, date: serviceData.date, time: '08:00', status: 'scheduled_auto', createdAt: new Date().toISOString(), notes: 'Agendado automaticamente.', price: serviceData.price }); addToast('Agenda', 'Visita agendada automaticamente.', 'info'); }
+        if (serviceToEdit && serviceToEdit.origin === 'appointment') { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'appointments', serviceToEdit.id)); }
       }
-      setIsServiceModalOpen(false);
-      setServiceToEdit(null);
-      setCurrentView('services'); 
-    } catch (e) {
-      console.error(e); addToast('Erro', 'Erro ao salvar.', 'error');
-    } finally { setIsSaving(false); }
+      setIsServiceModalOpen(false); setServiceToEdit(null); setCurrentView('services'); 
+    } catch (e) { console.error(e); addToast('Erro', 'Erro ao salvar.', 'error'); } finally { setIsSaving(false); }
   };
 
   const handleEditService = (service) => { setServiceToEdit(service); setIsServiceModalOpen(true); };
   const handleDeleteService = async (id) => { if (!user) return; if(window.confirm("Confirmar exclusão?")) { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'services', id)); addToast('Deletado', 'Registro removido.', 'info'); } };
-  
-  const handleAddAppointment = async (newAppointment) => {
-    if (!user) return;
-    setIsSaving(true);
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'appointments'), { ...newAppointment, createdAt: new Date().toISOString(), status: 'scheduled' });
-      if (newAppointment.budgetId) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'budgets', newAppointment.budgetId), { status: 'scheduled' });
-      addToast('Agendado', 'Visita confirmada na agenda.', 'success');
-      setIsAppointmentModalOpen(false); setAppointmentFromBudget(null); 
-    } catch (e) { console.error(e); addToast('Erro', 'Falha ao agendar.', 'error'); } finally { setIsSaving(false); }
-  };
+  const handleAddAppointment = async (newAppointment) => { if (!user) return; setIsSaving(true); try { await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'appointments'), { ...newAppointment, createdAt: new Date().toISOString(), status: 'scheduled' }); if (newAppointment.budgetId) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'budgets', newAppointment.budgetId), { status: 'scheduled' }); addToast('Agendado', 'Visita confirmada na agenda.', 'success'); setIsAppointmentModalOpen(false); setAppointmentFromBudget(null); } catch (e) { console.error(e); addToast('Erro', 'Falha ao agendar.', 'error'); } finally { setIsSaving(false); } };
   const handleDeleteAppointment = async (id) => { if (!user) return; if(window.confirm("Cancelar?")) { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'appointments', id)); addToast('Cancelado', 'Agendamento removido.', 'info'); } };
-  
-  const handleCompleteAppointment = (appointment) => { 
-    setServiceToEdit({ 
-      ...appointment, 
-      price: appointment.price || '', 
-      paymentMethod: appointment.paymentMethod || 'Pix', 
-      origin: 'appointment', 
-      notes: `(Agendado ${appointment.time}) ${appointment.notes || ''}` 
-    }); 
-    setIsServiceModalOpen(true); 
-  };
-  
-  const handleScheduleFromBudget = (budget) => { 
-    setAppointmentFromBudget({ 
-      client: budget.clientData.name, 
-      address: budget.clientData.address, 
-      type: budget.serviceType || 'Instalação Split', 
-      notes: `Ref. Orçamento #${budget.budgetNumber}.`, 
-      budgetId: budget.id, 
-      price: budget.total,
-      paymentMethod: budget.paymentMethod 
-    }); 
-    setIsAppointmentModalOpen(true); 
-  };
+  const handleCompleteAppointment = (appointment) => { setServiceToEdit({ ...appointment, price: appointment.price || '', paymentMethod: appointment.paymentMethod || 'Pix', origin: 'appointment', notes: `(Agendado ${appointment.time}) ${appointment.notes || ''}` }); setIsServiceModalOpen(true); };
+  const handleScheduleFromBudget = (budget) => { setAppointmentFromBudget({ client: budget.clientData.name, address: budget.clientData.address, type: budget.serviceType || 'Instalação Split', notes: `Ref. Orçamento #${budget.budgetNumber}.`, budgetId: budget.id, price: budget.total, paymentMethod: budget.paymentMethod }); setIsAppointmentModalOpen(true); };
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-600">
@@ -2062,17 +1637,27 @@ export default function App() {
           <SidebarItem icon={<LayoutDashboard size={18} />} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} />
           <SidebarItem icon={<Calendar size={18} />} label="Agenda" active={currentView === 'schedule'} onClick={() => setCurrentView('schedule')} />
           <SidebarItem icon={<Wrench size={18} />} label="Serviços" active={currentView === 'services'} onClick={() => setCurrentView('services')} />
-          <SidebarItem icon={<FileText size={18} />} label="Orçamentos" active={currentView === 'budget'} onClick={() => { setBudgetTab('new'); setCurrentView('budget'); }} />
+          <SidebarItem icon={<FileText size={18} />} label="Orçamentos" active={currentView === 'budget'} onClick={() => setCurrentView('budget')} />
           <SidebarItem icon={<Settings size={18} />} label="Configurações" active={currentView === 'settings'} onClick={() => setCurrentView('settings')} />
         </nav>
       </aside>
 
-      {/* Header Mobile */}
-      <div className="md:hidden fixed top-0 w-full bg-slate-900 z-30 px-4 py-3 flex items-center justify-center shadow-lg">
+      {/* Header Mobile Otimizado com Settings */}
+      <div className="md:hidden fixed top-0 w-full bg-slate-900 z-30 px-4 py-3 flex items-center justify-between shadow-lg">
          <span className="font-bold text-white text-sm flex items-center gap-2"><Snowflake size={16} /> InstalaControl</span>
+         
+         <div className="flex gap-2">
+            <button onClick={() => setCurrentView('settings')} className="text-slate-400 hover:text-white p-2">
+              <Settings size={20} />
+            </button>
+         </div>
       </div>
 
-      <MobileBottomNav currentView={currentView} onChangeView={setCurrentView} onOpenBudget={() => setIsBudgetModalOpen(true)} />
+      <MobileBottomNav 
+        currentView={currentView} 
+        onChangeView={setCurrentView} 
+        onAddBudget={() => setIsBudgetModalOpen(true)}
+      />
 
       <main className="flex-1 md:ml-64 p-6 md:p-10 pt-20 md:pt-10 overflow-y-auto">
         <div className={`max-w-6xl mx-auto ${currentView === 'budget' || currentView === 'schedule' ? 'max-w-7xl' : ''}`}>
@@ -2107,7 +1692,7 @@ export default function App() {
                 </div>
             </div>
           )}
-          {currentView === 'budget' && <BudgetGeneratorView userId={user?.uid} onScheduleFromBudget={handleScheduleFromBudget} initialTab={budgetTab} addToast={addToast} companySettings={settings} />}
+          {currentView === 'budget' && <BudgetHistoryView userId={user?.uid} onScheduleFromBudget={handleScheduleFromBudget} addToast={addToast} companySettings={settings} />}
         </div>
       </main>
     </div>
